@@ -1,17 +1,19 @@
 #define FUSE_USE_VERSION 26
 
 #include <sys/statvfs.h>
-#include <sys/xattr.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/xattr.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <errno.h>
-#include <fuse.h>
 
-//#define virtual_path "/FUSE_FS"
+#include "fuse.h"
+//#include "fuse_lowlevel.h"
 
 typedef struct ds {
 	const char* hello_path;
@@ -23,19 +25,11 @@ static ds_t aaa[] = {
 	{"/..", (unsigned char*)0},
 	{"/hello", (unsigned char*)"Hello World!\n"},
 	{"/file_one", (unsigned char*)"1234567890123456789\n"},
-};
-
-/*
-static ds_t aaa[] = {
-	{"/.", (unsigned char*)0},
-	{"/..", (unsigned char*)0},
-	{"/hello", (unsigned char*)"Hello World!\n"},
-	{"/file_one", (unsigned char*)"1234567890123456789\n"},
 	{(const char*)0, (unsigned char*)0}
 };
-*/
 
 static int fd;
+static FILE* fp;
 
 static int hello_chmod(const char* path, mode_t mode) {
 	int idx = 0;
@@ -74,7 +68,8 @@ static int hello_open(const char* path, struct fuse_file_info* fi) {
 	if(aaa[idx].hello_path == ((const char *)0))
 		return -ENOENT;
 
-	fd = fi->fh;
+//	fd = fi->fh;
+	fp = fopen(aaa[idx].hello_path, "r+");
 
 	return 0;
 }
@@ -110,20 +105,7 @@ static int hello_read(const char* path, char* buf, size_t size, off_t offset,
 static int hello_write(const char* path, const char* buf, size_t size, off_t offset,
 		struct fuse_file_info* fi) {
 	int idx = 0;
-	off_t nread = 0;
-	char buffer[size];
-
-/*	if(strcmp(path, "/") != 0) {
-		hello_open(path, fi);
-
-		if((nread = write(fd, buf, strlen(buf))) != 0)
-			printf("WRITE FAILED !! \n");
-		else
-			printf("WRITE SUCCESS !!!! \n");
-	}
-*/
-
-
+	int nread = 0;
 
 	if(strcmp(path, "/") != 0) {
 		while(aaa[idx].hello_path != ((const char*)0)) {
@@ -136,16 +118,21 @@ static int hello_write(const char* path, const char* buf, size_t size, off_t off
 		if(aaa[idx].hello_path == ((const char*)0))
 			return -ENOENT;
 
+		nread = strlen(buf);
 
-	}
+		aaa[idx].hello_str = (char*)malloc(nread);
+		memset(aaa[idx].hello_str, 0, sizeof(aaa[idx].hello_str));
 
-//		nread = strlen(buf);
-//		if((nread = write(fd, buf, strlen(buf))) != 0)
-//			printf("WRITE FAILED !!! \n");
-		//strcpy(aaa[idx].hello_str, buf);
-		//	for(int i=0; i<nread; i++) {
-		//	strcpy(aaa[idx].hello_str[i], buf[i]);
-		//	}
+		memcpy(aaa[idx].hello_str, buf, nread);
+/*		if(offset >= nread)
+			return 0;
+
+		if(nread < offset + (off_t)size) {
+			size = (size_t)nread - offset;
+		}
+		
+		free(aaa[idx].hello_str);
+*/	}
 
 	return nread;
 }
@@ -234,7 +221,6 @@ static int hello_getattr(const char* path, struct stat* stbuf) {
 		return -ENOENT;
 
 	stbuf->st_mode = S_IFREG|0666;
-//	stbuf->st_mode = S_IFREG|0444;
 	stbuf->st_nlink = 1;
 	stbuf->st_uid = getuid();
 	stbuf->st_gid = getgid();
@@ -278,7 +264,7 @@ static int hello_release(const char* path, struct fuse_file_info* fi) {
 }
 */
 /*
-static int hello_getxattr(const char* path, const char* name, char* value, size_t size) {
+static int hello_lib_getxattr(const char* path, const char* name, char* value, size_t size) {
 	int idx = 0;
 	int ret = 0;
 
@@ -311,12 +297,14 @@ static struct fuse_operations hello_oper = {
 //	.release = hello_release,
 	.readdir = hello_readdir,
 //	.create = hello_create,
-
-//#ifdef HAVE_SETXATTR
-//	.getxattr = hello_getxattr,
-//#endif
 };
-
+/*
+static struct fuse_lowlevel_ops fuse_path_ops = {
+#ifdef HAVE_SETXATTR
+	.getxattr = hello_lib_getxattr,
+#endif
+};
+*/
 int main(int argc, char** argv) {
 	return fuse_main(argc, argv, &hello_oper, NULL);
 }
