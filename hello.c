@@ -13,47 +13,29 @@
 #include <errno.h>
 
 #include "fuse.h"
-//#include "fuse_lowlevel.h"
+
+#define FILE_NAME 256
+#define FILE_SIZE 256
 
 typedef struct ds {
-	const char* hello_path;
+	char* hello_path;
 	unsigned char* hello_str;
 }ds_t;
+
+typedef struct file {
+	char* hello_path;
+	unsigned char* hello_str;
+	off_t offset;
+	int fsize;
+}file_t;
 
 static ds_t aaa[] = {
 	{"/.", (unsigned char*)0},
 	{"/..", (unsigned char*)0},
 	{"/hello", (unsigned char*)"Hello World!\n"},
 	{"/file_one", (unsigned char*)"1234567890123456789\n"},
-	{(const char*)0, (unsigned char*)0}
+	{(char*)0, (unsigned char*)0}
 };
-
-static int fd;
-static FILE* fp;
-
-static int hello_chmod(const char* path, mode_t mode) {
-	int idx = 0;
-	struct stat* buf;
-	int ret = 0;
-
-	while(aaa[idx].hello_path != ((const char *)0)) {
-		if(strcmp(path, aaa[idx].hello_path) == 0) {
-			break;
-		}
-		++idx;
-	}
-
-	if(aaa[idx].hello_path == ((const char *)0))
-		return -ENOENT;
-
-	//find error code
-	if((ret = stat(aaa[idx].hello_path, buf)) < 0)
-		return -1;
-
-	buf->st_mode = mode;
-
-	return ret;
-}
 
 static int hello_open(const char* path, struct fuse_file_info* fi) {
 	int idx = 0;
@@ -65,11 +47,46 @@ static int hello_open(const char* path, struct fuse_file_info* fi) {
 		++idx;
 	}
 
-	if(aaa[idx].hello_path == ((const char *)0))
-		return -ENOENT;
+//	if(aaa[idx].hello_path == ((const char *)0))
+//		return -ENOENT;
 
-//	fd = fi->fh;
-	fp = fopen(aaa[idx].hello_path, "r+");
+	fi->flags = O_CREAT|O_WRONLY|O_TRUNC;
+
+	return 0;
+}
+
+static int hello_create(const char* path, mode_t mode, struct fuse_file_info* fi) {
+	int idx = 0;
+	file_t* newfile;
+	struct stat* stbuf;
+	int res;
+
+	if(strcmp(path, "/") != 0) {
+		while(aaa[idx].hello_path != ((const char *)0)) {
+			if(strcmp(path, aaa[idx].hello_path) == 0)
+				break;
+			++idx;
+		}
+
+		stbuf = (struct stat*)malloc(sizeof(struct stat));
+		newfile = (file_t*)malloc(sizeof(file_t));
+		newfile->hello_path = (char*)malloc(FILE_NAME);
+		newfile->hello_str = (char*)malloc(FILE_SIZE);
+		
+		strcpy(newfile->hello_path, path);
+		fi->flags = O_CREAT|O_WRONLY|O_TRUNC;
+		mode = 0666;
+
+//		if((res = open(newfile->hello_path, fi->flags, mode)) == -1)
+		if(hello_open(newfile->hello_path, fi) != 0)
+			return -ENOENT;
+printf("KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK\n");
+		fi->fh = res;
+		newfile->offset = 0;
+		newfile->fsize = FILE_SIZE;
+	}
+	else
+		return -EPERM;
 
 	return 0;
 }
@@ -124,15 +141,7 @@ static int hello_write(const char* path, const char* buf, size_t size, off_t off
 		memset(aaa[idx].hello_str, 0, sizeof(aaa[idx].hello_str));
 
 		memcpy(aaa[idx].hello_str, buf, nread);
-/*		if(offset >= nread)
-			return 0;
-
-		if(nread < offset + (off_t)size) {
-			size = (size_t)nread - offset;
-		}
-		
-		free(aaa[idx].hello_str);
-*/	}
+	}
 
 	return nread;
 }
@@ -193,8 +202,6 @@ static int hello_readdir(const char* path, void* buf, fuse_fill_dir_t filler, of
 static int hello_getattr(const char* path, struct stat* stbuf) {
 
 	int idx = 0;
-	size_t size = strlen("/dir");
-	char tmp_path[256];
 
 	memset(stbuf, 0, sizeof(struct stat));
 
@@ -203,12 +210,6 @@ static int hello_getattr(const char* path, struct stat* stbuf) {
 		stbuf->st_nlink = 2;
 
 		return 0;
-	}
-
-	if(strncmp(path, "/dir", size) == 0) {
-		snprintf((char*)(&tmp_path[0]), sizeof(tmp_path), "%s%s", "/dir",
-				(char*)(&path[size]));
-		return stat(tmp_path, stbuf);
 	}
 
 	while(aaa[idx].hello_path != ((const char*)0)) {
@@ -228,43 +229,9 @@ static int hello_getattr(const char* path, struct stat* stbuf) {
 
 	return 0;
 }
+
 /*
-static int hello_release(const char* path, struct fuse_file_info* fi) {
-	int idx = 0;
-	struct stat* stbuf;
-	FILE* fp;
-
-	while(aaa[idx].hello_path != (const char*)0) {
-		if(strcmp(path, aaa[idx].hello_path) == 0)
-			break;
-		++idx;
-	}
-
-	if(aaa[idx].hello_path == ((const char *)0))
-		return -ENOENT;
-
-	if(strcmp(path, rm_file) != 0)
-		return -ENOENT;
-
-	fp = fopen(path, "r");
-
-	stat(path, stbuf);
-	if(stbuf->st_nlink != 1) {
-		printf("there are references!\n");
-		return -1;
-	}
-	if(fp != NULL) {
-		fclose(fp);
-		fp = NULL;
-	}
-	printf("close rm_file!\n");
-
-
-	return 0;
-}
-*/
-/*
-static int hello_lib_getxattr(const char* path, const char* name, char* value, size_t size) {
+static int hello_getxattr(const char* path, const char* name, char* value, size_t size) {
 	int idx = 0;
 	int ret = 0;
 
@@ -286,25 +253,25 @@ static int hello_lib_getxattr(const char* path, const char* name, char* value, s
 	return ret;
 }
 */
+
 static struct fuse_operations hello_oper = {
 	.getattr = hello_getattr,
 //	.mkdir = hello_mkdir,
 //	.rmdir = hello_rmdir,
-//	.chmod = hello_chmod,
 	.open = hello_open,
 	.read = hello_read,
 	.write = hello_write,
 //	.release = hello_release,
 	.readdir = hello_readdir,
-//	.create = hello_create,
+	.create = hello_create,
 };
+
 /*
-static struct fuse_lowlevel_ops fuse_path_ops = {
-#ifdef HAVE_SETXATTR
-	.getxattr = hello_lib_getxattr,
-#endif
+static struct fuse_lowlevel_ops hello_low_oper = {
+	.setattr = hello_setattr,
 };
 */
+
 int main(int argc, char** argv) {
 	return fuse_main(argc, argv, &hello_oper, NULL);
 }
