@@ -43,8 +43,9 @@ static int hello_getattr(const char* path, struct stat* stbuf) {
 	}
 	
 	while(files[idx]->hello_path != ((const char *)0)) {
-		if(strcmp(path, files[idx]->hello_path) == 0)
+		if(strcmp(path, files[idx]->hello_path) == 0) {
 			break;
+		}
 		++idx;
 	}
 
@@ -61,6 +62,13 @@ static int hello_getattr(const char* path, struct stat* stbuf) {
 
 	return 0;
 }
+
+/* TO DO;
+static int hello_setattr(const char* path, struct stat* stbuf) {
+
+	return 0;
+}
+*/
 
 static int hello_getxattr(const char* path, const char* name, char* value, size_t size) {
 	int res;
@@ -131,8 +139,33 @@ static int hello_create(const char* path, mode_t mode, struct fuse_file_info* fi
 	files[nidx-1] = newfile;
 	file_no = nidx;
 
-
 	return 0;
+}
+
+static int hello_unlink(const char* path) {
+	int idx = 0;
+
+	if(file_no > 0) {
+		while(files[idx]->hello_path != ((const char *)0)) {
+			if(strcmp(path, files[idx]->hello_path) == 0)
+				break;
+			++idx;
+		}
+
+		if(strcmp(path, files[idx]->hello_path) == 0) {
+			free(files[idx]->hello_str);
+			free(files[idx]->hello_path);
+			free(files[idx]);
+
+//			for(int k=idx
+
+			file_no--;
+
+			return 0;
+		}
+	}
+	else
+		return -ENOENT;
 }
 
 static int hello_read(const char* path, char* buf, size_t size, off_t offset,
@@ -146,9 +179,6 @@ static int hello_read(const char* path, char* buf, size_t size, off_t offset,
 				break;
 			++idx;
 		}
-
-		//	if(path == ((const char *)0))
-		//		return -ENOENT;
 
 		if(strcmp(path, files[idx]->hello_path) == 0) {
 			nread = strlen(files[idx]->hello_str);
@@ -207,6 +237,7 @@ static int hello_utimens(const char* path, const struct timespec ts[2]) {
 
 static struct fuse_operations hello_oper = {
 	.getattr = hello_getattr,
+//	.setattr = hello_setattr,
 #ifdef HAVE_SETXATTR
 	.getxattr = hello_getxattr,
 	.setxattr = hello_setxattr,
@@ -214,6 +245,7 @@ static struct fuse_operations hello_oper = {
 	.readdir = hello_readdir,
 	.open = hello_open,
 	.create = hello_create,
+	.unlink = hello_unlink,
 	.read = hello_read,
 	.write = hello_write,
 	.utimens = hello_utimens,
