@@ -170,7 +170,30 @@ static int hello_read(const char* path, char* buf, size_t size, off_t offset,
 
 static int hello_write(const char* path, const char* buf, size_t size, off_t offset,
 		struct fuse_file_info* fi) {
+	int idx = 0;
+	off_t nread;
 
+	if(file_no > 0) {
+		while(files[idx]->hello_path != ((const char *)0)) {
+			if(strcmp(path, files[idx]->hello_path) == 0)
+				break;
+			++idx;
+		}
+
+		if(files[idx]->hello_path == ((const char *)0))
+			return -ENOENT;
+
+		nread = strlen(buf);
+
+		files[idx]->hello_str = (char*)malloc(nread);
+		memset(files[idx]->hello_str, 0, sizeof(files[idx]->hello_str));
+
+		memcpy(files[idx]->hello_str, buf, nread);
+
+		return nread;
+	}
+	else
+		return -ENOENT;
 }
 
 static int hello_utimens(const char* path, const struct timespec ts[2]) {
