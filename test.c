@@ -41,25 +41,15 @@ static int hello_getattr(const char* path, struct stat* stbuf) {
 		
 		return 0;
 	}
-	else if(strncmp(path, "/.", 2) == 0) {
-		stbuf->st_mode = S_IFREG|0666;
-		stbuf->st_nlink = 1;
-		stbuf->st_uid = getuid();
-		stbuf->st_gid = getgid();
-		stbuf->st_atime = time(NULL);
-		stbuf->st_mtime = time(NULL);
-		
-		return 0;
-	}
-
+	
 	while(files[idx]->hello_path != ((const char *)0)) {
 		if(strcmp(path, files[idx]->hello_path) == 0)
 			break;
 		++idx;
 	}
 
-//	if(files[idx]->hello_path == ((const char *)0))
-//		return -ENOENT;
+	if(files[idx]->hello_path == ((const char *)0))
+		return -ENOENT;
 
 	stbuf->st_mode = S_IFREG|0666;
 	stbuf->st_nlink = 1;
@@ -84,6 +74,7 @@ static int hello_getxattr(const char* path, const char* name, char* value, size_
 
 static int hello_setxattr(const char* path, const char* name, const char* value,
 		size_t size, int flags) {
+
 	return 0;
 }
 
@@ -91,15 +82,14 @@ static int hello_readdir(const char* path, void* buf, fuse_fill_dir_t filler, of
 		struct fuse_file_info* fi) {
 	int idx = 0;
 
-	if(strcmp(path, "/") == 0) {
-		while(files[idx]->hello_path != ((const char *)0)) {
-			filler(buf, files[idx]->hello_path+1, NULL, 0);
-			++idx;
-		}
+	filler(buf, ".", NULL, 0);
+	filler(buf, "..", NULL, 0);
 
-		filler(buf, ".", NULL, 0);
-		filler(buf, "..", NULL, 0);
+	while(file_no != idx) {
+		filler(buf, files[idx]->hello_path+1, NULL, 0);
+		++idx;
 	}
+
 	return 0;
 }
 
@@ -112,15 +102,12 @@ static int hello_open(const char* path, struct fuse_file_info* fi) {
 		++idx;
 	}
 
-//	if(files[idx]->hello_path == ((const char *)0)) {
 	if(files[idx]->hello_path != ((const char *)0)) {
 //		fi->flags = O_CREAT|O_WRONLY|O_TRUNC;
 		fi->flags = O_RDWR;
 	}
 	
 	fi->flags = O_CREAT|O_WRONLY|O_EXCL;
-	fi->fh = open(path, 0222);
-//	fi->fh = open(path, 0666);
 
 	return 0;
 }
@@ -132,17 +119,18 @@ static int hello_create(const char* path, mode_t mode, struct fuse_file_info* fi
 	newfile = (tfile*)malloc(sizeof(struct tfile));
 	newfile->hello_path = (char*)malloc(256);
 	newfile->hello_str = (char*)malloc(256);
-
+	
 	strcpy(newfile->hello_path, path);
 	newfile->hello_str = NULL;
 	fi->flags = O_CREAT|O_WRONLY|O_TRUNC;
 	mode = 0666;
-
+	
 	while(files[nidx] != ((struct tfile *)NULL))
 		nidx++;
+	
+	files[nidx-1] = newfile;
+	file_no = nidx;
 
-	files[nidx] = newfile;
-	file_no = nidx + 1;
 
 	return 0;
 }
@@ -180,18 +168,16 @@ static int hello_read(const char* path, char* buf, size_t size, off_t offset,
 		return -ENOENT;
 }
 
+static int hello_write(const char* path, const char* buf, size_t size, off_t offset,
+		struct fuse_file_info* fi) {
+
+}
+
 static int hello_utimens(const char* path, const struct timespec ts[2]) {
-	int res;
-	struct timeval tv[2];
+	struct utimbuf ubuf;
 
-	tv[0].tv_sec = ts[0].tv_sec;
-	tv[0].tv_usec = ts[0].tv_nsec / 1000;
-	tv[1].tv_sec = ts[1].tv_sec;
-	tv[1].tv_usec = ts[1].tv_nsec / 1000;
-
-	res = utimes(path, tv);
-	if(res == -1)
-		return -1;
+	ubuf.actime = ts[0].tv_sec;
+	ubuf.modtime = ts[1].tv_sec;
 
 	return 0;
 }
@@ -206,6 +192,7 @@ static struct fuse_operations hello_oper = {
 	.open = hello_open,
 	.create = hello_create,
 	.read = hello_read,
+	.write = hello_write,
 	.utimens = hello_utimens,
 };
 
@@ -217,5 +204,4 @@ int main(int argc, char** argv) {
 	}
 
 	return fuse_main(argc, argv, &hello_oper, &files);
-//	return fuse_main(argc, argv, &hello_oper, NULL);
 }
