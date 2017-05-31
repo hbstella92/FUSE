@@ -18,7 +18,6 @@
 #define MAX_FILE_NO 10
 #define MAX_NAME 256
 #define FILE_SIZE 256
-#define FLAG -1
 
 typedef struct tdir {
 	char* dpath;
@@ -34,7 +33,7 @@ static struct tdir d_entry[MAX_FILE_NO];
 static tfile** files;
 static int dir_no = 0;
 static int file_no = 0;
-static int flags[MAX_FILE_NO];
+static int create_no;
 
 static int hello_getattr(const char* path, struct stat* stbuf) {
 	int idx;
@@ -131,7 +130,7 @@ static int hello_mkdir(const char* path, mode_t mode) {
 
 	memcpy(d_entry[d_idx].dpath, path, strlen(path));
 	dir_no++;
-printf("d_entry[%d].dpath = %s\n", d_idx, d_entry[d_idx].dpath);	
+	
 	return 0;
 }
 
@@ -215,6 +214,7 @@ static int hello_create(const char* path, mode_t mode, struct fuse_file_info* fi
 
 static int hello_unlink(const char* path) {
 	int idx;
+	int k;
 
 	for(idx=0; idx<file_no; idx++) {
 		if(strcmp(path, files[idx]->hello_path) == 0)
@@ -227,12 +227,17 @@ static int hello_unlink(const char* path) {
 
 	free(files[idx]->hello_str);
 	free(files[idx]->hello_path);
-	free(files[idx]);
-	files[idx]->hello_path = (unsigned char *)0;
-	flags[idx] = FLAG;
+//	free(files[idx]);
+//	files[idx]->hello_path = (unsigned char *)0;
+
+	for(k=idx; k<file_no-1; k++) {
+		files[k]->hello_str = files[k+1]->hello_str;
+		files[k]->hello_path = files[k+1]->hello_path;
+	}
+	files[k]->hello_str = NULL;
+	files[k]->hello_path = NULL;
 
 	file_no--;
-
 	return 0;
 }
 
@@ -325,7 +330,6 @@ int main(int argc, char** argv) {
 	
 	for(int i=0; i<MAX_FILE_NO; i++) {
 		*files = (tfile*)malloc(sizeof(struct tfile));
-		flags[i] = 0;
 	}
 	
 	d_entry[0].dpath = (char*)malloc(sizeof(char)*2);
