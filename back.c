@@ -33,7 +33,6 @@ static struct tdir d_entry[MAX_FILE_NO];
 static tfile** files;
 static int dir_no = 0;
 static int file_no = 0;
-static int create_no;
 
 static int hello_getattr(const char* path, struct stat* stbuf) {
 	int idx;
@@ -227,8 +226,6 @@ static int hello_unlink(const char* path) {
 
 	free(files[idx]->hello_str);
 	free(files[idx]->hello_path);
-//	free(files[idx]);
-//	files[idx]->hello_path = (unsigned char *)0;
 
 	for(k=idx; k<file_no-1; k++) {
 		files[k]->hello_str = files[k+1]->hello_str;
