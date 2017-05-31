@@ -22,8 +22,6 @@
 typedef struct tdir {
 	char* dpath;
 	int inode;
-//	files* f_ptr;
-//	tdir* d_ptr;
 }tdir;
 
 typedef struct tfile {
@@ -37,22 +35,24 @@ static int dir_no = 0;
 static int file_no = 0;
 
 static int hello_getattr(const char* path, struct stat* stbuf) {
-	int idx = 0;
-	int d_idx = 0;
+	int idx;
+	int d_idx;
 
 	memset(stbuf, 0, sizeof(struct stat));
 
-	while(d_entry[d_idx].dpath != ((const char *)0)) {
-		if(strcmp(path, d_entry[d_idx].dpath) == 0) {
+	for(d_idx=0; d_idx<dir_no+2; d_idx++) {
+		if(strcmp(path, d_entry[d_idx].dpath) == 0)
 			break;
+		else {
+			if(d_idx == dir_no -1)
+				goto is_it_file;
 		}
-		++d_idx;
 	}
-	
-	if(d_entry[d_idx].dpath == ((const char *)0))
-		return -ENOENT;
 
-	if(strcmp(path, d_entry[d_idx].dpath) == 0) {	
+	if(d_entry[d_idx].dpath == ((const char *)0))
+		goto is_it_file;
+
+	if(strcmp(path, d_entry[d_idx].dpath) == 0) {
 		stbuf->st_ino = 1 + d_idx;
 		stbuf->st_mode = S_IFDIR|0755;
 		stbuf->st_nlink = 2;
@@ -60,41 +60,38 @@ static int hello_getattr(const char* path, struct stat* stbuf) {
 		stbuf->st_gid = getgid();
 		stbuf->st_atime = time(NULL);
 		stbuf->st_mtime = time(NULL);
-		
+
 		return 0;
 	}
-		
-	while(files[idx]->hello_path != ((const char *)0)) {
-		if(strcmp(path, files[idx]->hello_path) == 0) {
-			break;
+
+is_it_file:
+
+	if(file_no > 0) {
+		for(idx=0; idx<file_no; idx++) {
+			if(strcmp(path, files[idx]->hello_path) == 0)
+				break;
+			else {
+				if(idx == file_no - 1)
+					return -ENOENT;
+			}
 		}
-		++idx;
-	}
 
-	if(files[idx]->hello_path == ((const char *)0))
+		if(strcmp(path, files[idx]->hello_path) == 0) {
+			stbuf->st_mode = S_IFREG|0666;
+			stbuf->st_nlink = 1;
+			stbuf->st_size = FILE_SIZE;
+			stbuf->st_uid = getuid();
+			stbuf->st_gid = getgid();
+			stbuf->st_atime = time(NULL);
+			stbuf->st_mtime = time(NULL);
+
+			return 0;
+		}
+	}
+	else
 		return -ENOENT;
-	else {
-		stbuf->st_mode = S_IFREG|0666;
-		stbuf->st_nlink = 1;
-		stbuf->st_size = FILE_SIZE;
-		stbuf->st_uid = getuid();
-		stbuf->st_gid = getgid();
-		stbuf->st_atime = time(NULL);
-		stbuf->st_mtime = time(NULL);
-
-		return 0;
-	}
-
-	return 0;
 }
 
-/*
-static int hello_setattr(const char* path, struct stat* stbuf) {
-
-
-	return 0;
-}
-*/
 static int hello_getxattr(const char* path, const char* name, char* value, size_t size) {
 	int res;
 
@@ -208,38 +205,31 @@ static int hello_create(const char* path, mode_t mode, struct fuse_file_info* fi
 
 	files[idx] = newfile;
 	file_no = idx + 1;
-printf("CCCCCCCCCCCCCCCCCCCCCCCCCCCCC str is = %s\n", files[idx]->hello_path);
+	
 	return 0;
 }
-/*
+
 static int hello_unlink(const char* path) {
-	int idx = 0;
+	int idx;
 
-	if(file_no > 0) {
-		while(files[idx]->hello_path != ((const char *)0)) {
-			if(strcmp(path, files[idx]->hello_path) == 0)
-				break;
-			++idx;
-		}
-
-		if(strcmp(path, files[idx]->hello_path) == 0) {
-			free(files[idx]->hello_str);
-			free(files[idx]->hello_path);
-			free(files[idx]);
-
-//			memset(files[idx]->hello_path, 0, sizeof(256));
-//			memset(files[idx]->hello_str, 0, sizeof(256));
-
-
-			file_no--;
-
-			return 0;
-		}
+	for(idx=2; idx<file_no; idx++) {
+		if(strcmp(path, files[idx]->hello_path) == 0)
+			break;
 	}
-	else
+
+	if(files[idx]->hello_path == ((const char *)0))
 		return -ENOENT;
+
+	free(files[idx]->hello_str);
+	free(files[idx]->hello_path);
+	free(files[idx]);
+	files[idx]->hello_path = NULL;
+	
+	file_no--;
+
+	return 0;
 }
-*/
+
 static int hello_read(const char* path, char* buf, size_t size, off_t offset,
 		struct fuse_file_info* fi) {
 	int idx;
@@ -300,7 +290,6 @@ static int hello_utimens(const char* path, const struct timespec ts[2]) {
 
 static struct fuse_operations hello_oper = {
 	.getattr = hello_getattr,
-//	.setattr = hello_setattr,
 #ifdef HAVE_SETXATTR
 	.getxattr = hello_getxattr,
 	.setxattr = hello_setxattr,
@@ -310,7 +299,7 @@ static struct fuse_operations hello_oper = {
 	.open = hello_open,
 	.release = hello_release,
 	.create = hello_create,
-//	.unlink = hello_unlink,
+	.unlink = hello_unlink,
 	.read = hello_read,
 	.write = hello_write,
 	.utimens = hello_utimens,
@@ -328,12 +317,6 @@ int main(int argc, char** argv) {
 
 	memcpy(d_entry[0].dpath, "/", sizeof(char)*2);
 	memcpy(d_entry[1].dpath, "..", sizeof(char)*3);
-
-//	d_entry[0].dpath = (char*)malloc(sizeof(char)*3);
-//	d_entry[1].dpath = (char*)malloc(sizeof(char)*2);
-	
-//	memcpy(d_entry[0].dpath, "..", sizeof(char)*3);
-//	memcpy(d_entry[1].dpath, "/", sizeof(char)*2);
 
 	return fuse_main(argc, argv, &hello_oper, &files);
 }
