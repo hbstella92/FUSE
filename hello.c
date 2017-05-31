@@ -290,11 +290,6 @@ static int hello_write(const char* path, const char* buf, size_t size, off_t off
 	return nread;
 }
 
-static int hello_chmod(const char* path, mode_t mode, struct fuse_file_info* fi) {
-
-	return 0;
-}
-
 static int hello_utimens(const char* path, const struct timespec ts[2]) {
 	struct utimbuf ubuf;
 
@@ -318,7 +313,6 @@ static struct fuse_operations hello_oper = {
 	.unlink = hello_unlink,
 	.read = hello_read,
 	.write = hello_write,
-//	.chmod = hello_chmod,
 	.utimens = hello_utimens,
 };
 
