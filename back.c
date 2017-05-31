@@ -18,6 +18,7 @@
 #define MAX_FILE_NO 10
 #define MAX_NAME 256
 #define FILE_SIZE 256
+#define FLAG -1
 
 typedef struct tdir {
 	char* dpath;
@@ -33,23 +34,24 @@ static struct tdir d_entry[MAX_FILE_NO];
 static tfile** files;
 static int dir_no = 0;
 static int file_no = 0;
+static int flags[MAX_FILE_NO];
 
 static int hello_getattr(const char* path, struct stat* stbuf) {
 	int idx;
 	int d_idx;
 
 	memset(stbuf, 0, sizeof(struct stat));
-
+	
 	for(d_idx=0; d_idx<dir_no+2; d_idx++) {
 		if(strcmp(path, d_entry[d_idx].dpath) == 0)
 			break;
 		else {
-			if(d_idx == dir_no -1)
+			if(d_idx == dir_no+1)
 				goto is_it_file;
 		}
 	}
 
-	if(d_entry[d_idx].dpath == ((const char *)0))
+	if(d_entry[d_idx].dpath == ((char *)0))
 		goto is_it_file;
 
 	if(strcmp(path, d_entry[d_idx].dpath) == 0) {
@@ -79,7 +81,10 @@ is_it_file:
 		if(strcmp(path, files[idx]->hello_path) == 0) {
 			stbuf->st_mode = S_IFREG|0666;
 			stbuf->st_nlink = 1;
-			stbuf->st_size = FILE_SIZE;
+			if(files[idx]->hello_str == ((unsigned char *)0))
+				stbuf->st_size = 0;
+			else
+				stbuf->st_size = strlen(files[idx]->hello_str);
 			stbuf->st_uid = getuid();
 			stbuf->st_gid = getgid();
 			stbuf->st_atime = time(NULL);
@@ -126,7 +131,7 @@ static int hello_mkdir(const char* path, mode_t mode) {
 
 	memcpy(d_entry[d_idx].dpath, path, strlen(path));
 	dir_no++;
-
+printf("d_entry[%d].dpath = %s\n", d_idx, d_entry[d_idx].dpath);	
 	return 0;
 }
 
@@ -161,7 +166,7 @@ static int hello_open(const char* path, struct fuse_file_info* fi) {
 		++fd;
 	}
 
-	if(files[idx]->hello_path != ((const char *)0))
+	if(files[idx]->hello_path != ((char *)0))
 		fi->flags = O_CREAT|O_WRONLY|O_TRUNC;
 	else
 		fi->flags = O_RDWR;
@@ -174,7 +179,7 @@ static int hello_open(const char* path, struct fuse_file_info* fi) {
 static int hello_release(const char* path, struct fuse_file_info* fi) {
 	int idx = 0;
 	
-	while(files[idx]->hello_path != ((const char *)0)) {
+	while(files[idx]->hello_path != ((char *)0)) {
 		if(strcmp(path, files[idx]->hello_path) == 0)
 			break;
 		++idx;
@@ -196,10 +201,9 @@ static int hello_create(const char* path, mode_t mode, struct fuse_file_info* fi
 
 	newfile = (tfile*)malloc(sizeof(struct tfile));
 	newfile->hello_path = (char*)malloc(256);
-	newfile->hello_str = (char*)malloc(256);
 	
 	strcpy(newfile->hello_path, path);
-	newfile->hello_str = NULL;
+	newfile->hello_str = (unsigned char *)0;
 	fi->flags = O_CREAT|O_WRONLY|O_TRUNC;
 	mode = 0644;
 
@@ -212,19 +216,21 @@ static int hello_create(const char* path, mode_t mode, struct fuse_file_info* fi
 static int hello_unlink(const char* path) {
 	int idx;
 
-	for(idx=2; idx<file_no; idx++) {
+	for(idx=0; idx<file_no; idx++) {
 		if(strcmp(path, files[idx]->hello_path) == 0)
 			break;
+		else {
+			if(idx == file_no-1)
+				return -ENOENT;
+		}
 	}
-
-	if(files[idx]->hello_path == ((const char *)0))
-		return -ENOENT;
 
 	free(files[idx]->hello_str);
 	free(files[idx]->hello_path);
 	free(files[idx]);
-	files[idx]->hello_path = NULL;
-	
+	files[idx]->hello_path = (unsigned char *)0;
+	flags[idx] = FLAG;
+
 	file_no--;
 
 	return 0;
@@ -240,10 +246,13 @@ static int hello_read(const char* path, char* buf, size_t size, off_t offset,
 			break;
 	}
 
-	if(files[idx]->hello_path == ((const char *)0))
+	if(files[idx]->hello_path == ((char *)0))
 		return -ENOENT;
 
-	nread = strlen(files[idx]->hello_str);
+	if(files[idx]->hello_str == ((unsigned char *)0))
+		nread = 0;
+	else
+		nread = strlen(files[idx]->hello_str);
 
 	if(offset > nread)
 		return 0;
@@ -266,7 +275,7 @@ static int hello_write(const char* path, const char* buf, size_t size, off_t off
 			break;
 	}
 
-	if(files[idx]->hello_path == ((const char *)0))
+	if(files[idx]->hello_path == ((char *)0))
 		return -ENOENT;
 	
 	nread = strlen(buf);
@@ -277,6 +286,11 @@ static int hello_write(const char* path, const char* buf, size_t size, off_t off
 	memcpy(files[idx]->hello_str, buf, nread);
 
 	return nread;
+}
+
+static int hello_chmod(const char* path, mode_t mode, struct fuse_file_info* fi) {
+
+	return 0;
 }
 
 static int hello_utimens(const char* path, const struct timespec ts[2]) {
@@ -302,6 +316,7 @@ static struct fuse_operations hello_oper = {
 	.unlink = hello_unlink,
 	.read = hello_read,
 	.write = hello_write,
+//	.chmod = hello_chmod,
 	.utimens = hello_utimens,
 };
 
@@ -310,6 +325,7 @@ int main(int argc, char** argv) {
 	
 	for(int i=0; i<MAX_FILE_NO; i++) {
 		*files = (tfile*)malloc(sizeof(struct tfile));
+		flags[i] = 0;
 	}
 	
 	d_entry[0].dpath = (char*)malloc(sizeof(char)*2);
